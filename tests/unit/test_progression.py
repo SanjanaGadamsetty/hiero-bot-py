@@ -107,6 +107,34 @@ async def test_consecutive_merges_celebrate_first_milestone_only_once(mock_gh, c
     )
 
 
+
+@pytest.mark.asyncio
+async def test_repeated_first_milestone_count_does_not_repeat_celebration(mock_gh, ctx):
+    """A stale count must not repeat the first-merge celebration."""
+    mock_gh.list_issues = AsyncMock(return_value=[])
+
+    stale_stats = {
+        "merged_prs": 1,
+        "reviews_given": 0,
+        "months_active": 0,
+        "login": "alice",
+    }
+
+    wf = ProgressionWorkflow(mock_gh)
+
+    with patch.object(wf, "_collect_stats", AsyncMock(return_value=stale_stats)):
+        await wf.handle_merged_pr(ctx, merged_pr_payload(pr_number=1))
+        await wf.handle_merged_pr(ctx, merged_pr_payload(pr_number=2))
+
+    celebrations = [
+        call for call in mock_gh.post_comment.call_args_list
+        if "First merged PR" in call.args[3]
+    ]
+
+    assert len(celebrations) == 1
+
+
+
 @pytest.mark.asyncio
 async def test_celebrates_tenth_pr_milestone(mock_gh, ctx):
     stats = {"merged_prs": 10, "reviews_given": 5, "months_active": 3, "login": "alice"}
