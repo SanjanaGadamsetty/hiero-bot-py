@@ -66,6 +66,48 @@ async def test_celebrates_first_pr_milestone(mock_gh, ctx):
 
 
 @pytest.mark.asyncio
+async def test_consecutive_merges_celebrate_first_milestone_only_once(mock_gh, ctx):
+    """Only the first of two consecutive merges should trigger a milestone."""
+    mock_gh.list_issues = AsyncMock(return_value=[])
+
+    first_stats = {
+        "merged_prs": 1,
+        "reviews_given": 0,
+        "months_active": 0,
+        "login": "alice",
+    }
+    second_stats = {
+        "merged_prs": 2,
+        "reviews_given": 0,
+        "months_active": 0,
+        "login": "alice",
+    }
+
+    wf = ProgressionWorkflow(mock_gh)
+
+    with patch.object(
+        wf,
+        "_collect_stats",
+        AsyncMock(side_effect=[first_stats, second_stats]),
+    ) as collect:
+        await wf.handle_merged_pr(ctx, merged_pr_payload(pr_number=1))
+        await wf.handle_merged_pr(ctx, merged_pr_payload(pr_number=2))
+
+    first_pr_celebrations = [
+        call for call in mock_gh.post_comment.call_args_list
+        if "First merged PR" in call.args[3]
+    ]
+
+    assert len(first_pr_celebrations) == 1
+    assert first_pr_celebrations[0].args[2] == 1
+    assert collect.await_count == 2
+    assert all(
+        call.kwargs["use_cache"] is False
+        for call in collect.await_args_list
+    )
+
+
+@pytest.mark.asyncio
 async def test_celebrates_tenth_pr_milestone(mock_gh, ctx):
     stats = {"merged_prs": 10, "reviews_given": 5, "months_active": 3, "login": "alice"}
     mock_gh.list_issues = AsyncMock(return_value=[])
